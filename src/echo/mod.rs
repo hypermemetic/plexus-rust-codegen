@@ -26,14 +26,14 @@ message: String,
 
 // === Methods ===
 
-/// Echo a message back
-pub async fn echo(client: &PlexusClient, count: i64, message: String) -> Result<EchoEvent> {
-    client.call_single("echo.echo", json!({ "count": count, "message": message })).await
-}
-
 /// Echo a simple message once
 pub async fn once(client: &PlexusClient, message: String) -> Result<EchoEvent> {
     client.call_single("echo.once", json!({ "message": message })).await
+}
+
+/// Echo a message back
+pub async fn echo(client: &PlexusClient, count: i64, message: String) -> Result<EchoEvent> {
+    client.call_single("echo.echo", json!({ "count": count, "message": message })).await
 }
 
 /// Get plugin or method schema. Pass {"method": "name"} for a specific method.

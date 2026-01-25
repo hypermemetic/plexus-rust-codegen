@@ -41,34 +41,6 @@ pub async fn create(client: &PlexusClient, description: Option<String>, forges: 
     Ok(Box::pin(typed_stream))
 }
 
-/// Mark a repository for deletion
-pub async fn remove(client: &PlexusClient, force: Option<bool>, repo_name: String) -> Result<Pin<Box<dyn Stream<Item = Result<RepoRemoveEvent>> + Send>>> {
-    let stream = client.call_stream("hyperforge.org.juggernautlabs.repos.remove", json!({ "force": force, "repo_name": repo_name })).await?;
-
-    // Filter and transform stream items to typed data
-    let typed_stream = stream.filter_map(|item| async move {
-        match item {
-            Ok(PlexusStreamItem::Data { content, .. }) => {
-                match serde_json::from_value::<RepoRemoveEvent>(content) {
-                    Ok(data) => Some(Ok(data)),
-                    Err(e) => Some(Err(e.into())),
-                }
-            }
-            Ok(PlexusStreamItem::Error { message, code, .. }) => {
-                Some(Err(anyhow!("Plexus error{}: {}",
-                    code.map(|c| format!(" [{}]", c)).unwrap_or_default(),
-                    message
-                )))
-            }
-            Ok(PlexusStreamItem::Progress { .. }) => None, // Skip progress
-            Ok(PlexusStreamItem::Done { .. }) => None, // Stream will end
-            Err(e) => Some(Err(e)),
-        }
-    });
-
-    Ok(Box::pin(typed_stream))
-}
-
 /// Full bidirectional sync with convergence verification
 pub async fn converge(client: &PlexusClient, dry_run: Option<bool>, yes: Option<bool>) -> Result<Pin<Box<dyn Stream<Item = Result<RepoConvergeEvent>> + Send>>> {
     let stream = client.call_stream("hyperforge.org.juggernautlabs.repos.converge", json!({ "dry_run": dry_run, "yes": yes })).await?;
@@ -125,6 +97,11 @@ pub async fn adopt(client: &PlexusClient, description: Option<String>, forges: O
     Ok(Box::pin(typed_stream))
 }
 
+/// Get plugin or method schema. Pass {"method": "name"} for a specific method.
+pub async fn schema(client: &PlexusClient) -> Result<serde_json::Value> {
+    client.call_single("hyperforge.org.juggernautlabs.repos.schema", serde_json::Value::Null).await
+}
+
 /// Clone all repositories for an organization
 pub async fn clone_all(client: &PlexusClient, target: Option<String>) -> Result<Pin<Box<dyn Stream<Item = Result<RepoCloneEvent>> + Send>>> {
     let stream = client.call_stream("hyperforge.org.juggernautlabs.repos.clone_all", json!({ "target": target })).await?;
@@ -134,67 +111,6 @@ pub async fn clone_all(client: &PlexusClient, target: Option<String>) -> Result<
         match item {
             Ok(PlexusStreamItem::Data { content, .. }) => {
                 match serde_json::from_value::<RepoCloneEvent>(content) {
-                    Ok(data) => Some(Ok(data)),
-                    Err(e) => Some(Err(e.into())),
-                }
-            }
-            Ok(PlexusStreamItem::Error { message, code, .. }) => {
-                Some(Err(anyhow!("Plexus error{}: {}",
-                    code.map(|c| format!(" [{}]", c)).unwrap_or_default(),
-                    message
-                )))
-            }
-            Ok(PlexusStreamItem::Progress { .. }) => None, // Skip progress
-            Ok(PlexusStreamItem::Done { .. }) => None, // Stream will end
-            Err(e) => Some(Err(e)),
-        }
-    });
-
-    Ok(Box::pin(typed_stream))
-}
-
-/// Refresh local state from forge APIs
-pub async fn refresh(client: &PlexusClient, force: Option<bool>) -> Result<Pin<Box<dyn Stream<Item = Result<RepoRefreshEvent>> + Send>>> {
-    let stream = client.call_stream("hyperforge.org.juggernautlabs.repos.refresh", json!({ "_force": force })).await?;
-
-    // Filter and transform stream items to typed data
-    let typed_stream = stream.filter_map(|item| async move {
-        match item {
-            Ok(PlexusStreamItem::Data { content, .. }) => {
-                match serde_json::from_value::<RepoRefreshEvent>(content) {
-                    Ok(data) => Some(Ok(data)),
-                    Err(e) => Some(Err(e.into())),
-                }
-            }
-            Ok(PlexusStreamItem::Error { message, code, .. }) => {
-                Some(Err(anyhow!("Plexus error{}: {}",
-                    code.map(|c| format!(" [{}]", c)).unwrap_or_default(),
-                    message
-                )))
-            }
-            Ok(PlexusStreamItem::Progress { .. }) => None, // Skip progress
-            Ok(PlexusStreamItem::Done { .. }) => None, // Stream will end
-            Err(e) => Some(Err(e)),
-        }
-    });
-
-    Ok(Box::pin(typed_stream))
-}
-
-/// Get plugin or method schema. Pass {"method": "name"} for a specific method.
-pub async fn schema(client: &PlexusClient) -> Result<serde_json::Value> {
-    client.call_single("hyperforge.org.juggernautlabs.repos.schema", serde_json::Value::Null).await
-}
-
-/// List repositories in this organization
-pub async fn list(client: &PlexusClient, staged: Option<bool>) -> Result<Pin<Box<dyn Stream<Item = Result<RepoListEvent>> + Send>>> {
-    let stream = client.call_stream("hyperforge.org.juggernautlabs.repos.list", json!({ "staged": staged })).await?;
-
-    // Filter and transform stream items to typed data
-    let typed_stream = stream.filter_map(|item| async move {
-        match item {
-            Ok(PlexusStreamItem::Data { content, .. }) => {
-                match serde_json::from_value::<RepoListEvent>(content) {
                     Ok(data) => Some(Ok(data)),
                     Err(e) => Some(Err(e.into())),
                 }
@@ -242,15 +158,15 @@ pub async fn sync(client: &PlexusClient, dry_run: Option<bool>, repo_name: Optio
     Ok(Box::pin(typed_stream))
 }
 
-/// Clone a repository from forges and configure remotes
-pub async fn clone(client: &PlexusClient, repo_name: String, target: Option<String>) -> Result<Pin<Box<dyn Stream<Item = Result<RepoCloneEvent>> + Send>>> {
-    let stream = client.call_stream("hyperforge.org.juggernautlabs.repos.clone", json!({ "repo_name": repo_name, "target": target })).await?;
+/// Mark a repository for deletion
+pub async fn remove(client: &PlexusClient, force: Option<bool>, repo_name: String) -> Result<Pin<Box<dyn Stream<Item = Result<RepoRemoveEvent>> + Send>>> {
+    let stream = client.call_stream("hyperforge.org.juggernautlabs.repos.remove", json!({ "force": force, "repo_name": repo_name })).await?;
 
     // Filter and transform stream items to typed data
     let typed_stream = stream.filter_map(|item| async move {
         match item {
             Ok(PlexusStreamItem::Data { content, .. }) => {
-                match serde_json::from_value::<RepoCloneEvent>(content) {
+                match serde_json::from_value::<RepoRemoveEvent>(content) {
                     Ok(data) => Some(Ok(data)),
                     Err(e) => Some(Err(e.into())),
                 }
@@ -279,6 +195,90 @@ pub async fn diff(client: &PlexusClient, refresh: Option<bool>) -> Result<Pin<Bo
         match item {
             Ok(PlexusStreamItem::Data { content, .. }) => {
                 match serde_json::from_value::<RepoDiffEvent>(content) {
+                    Ok(data) => Some(Ok(data)),
+                    Err(e) => Some(Err(e.into())),
+                }
+            }
+            Ok(PlexusStreamItem::Error { message, code, .. }) => {
+                Some(Err(anyhow!("Plexus error{}: {}",
+                    code.map(|c| format!(" [{}]", c)).unwrap_or_default(),
+                    message
+                )))
+            }
+            Ok(PlexusStreamItem::Progress { .. }) => None, // Skip progress
+            Ok(PlexusStreamItem::Done { .. }) => None, // Stream will end
+            Err(e) => Some(Err(e)),
+        }
+    });
+
+    Ok(Box::pin(typed_stream))
+}
+
+/// List repositories in this organization
+pub async fn list(client: &PlexusClient, staged: Option<bool>) -> Result<Pin<Box<dyn Stream<Item = Result<RepoListEvent>> + Send>>> {
+    let stream = client.call_stream("hyperforge.org.juggernautlabs.repos.list", json!({ "staged": staged })).await?;
+
+    // Filter and transform stream items to typed data
+    let typed_stream = stream.filter_map(|item| async move {
+        match item {
+            Ok(PlexusStreamItem::Data { content, .. }) => {
+                match serde_json::from_value::<RepoListEvent>(content) {
+                    Ok(data) => Some(Ok(data)),
+                    Err(e) => Some(Err(e.into())),
+                }
+            }
+            Ok(PlexusStreamItem::Error { message, code, .. }) => {
+                Some(Err(anyhow!("Plexus error{}: {}",
+                    code.map(|c| format!(" [{}]", c)).unwrap_or_default(),
+                    message
+                )))
+            }
+            Ok(PlexusStreamItem::Progress { .. }) => None, // Skip progress
+            Ok(PlexusStreamItem::Done { .. }) => None, // Stream will end
+            Err(e) => Some(Err(e)),
+        }
+    });
+
+    Ok(Box::pin(typed_stream))
+}
+
+/// Refresh local state from forge APIs
+pub async fn refresh(client: &PlexusClient, force: Option<bool>) -> Result<Pin<Box<dyn Stream<Item = Result<RepoRefreshEvent>> + Send>>> {
+    let stream = client.call_stream("hyperforge.org.juggernautlabs.repos.refresh", json!({ "_force": force })).await?;
+
+    // Filter and transform stream items to typed data
+    let typed_stream = stream.filter_map(|item| async move {
+        match item {
+            Ok(PlexusStreamItem::Data { content, .. }) => {
+                match serde_json::from_value::<RepoRefreshEvent>(content) {
+                    Ok(data) => Some(Ok(data)),
+                    Err(e) => Some(Err(e.into())),
+                }
+            }
+            Ok(PlexusStreamItem::Error { message, code, .. }) => {
+                Some(Err(anyhow!("Plexus error{}: {}",
+                    code.map(|c| format!(" [{}]", c)).unwrap_or_default(),
+                    message
+                )))
+            }
+            Ok(PlexusStreamItem::Progress { .. }) => None, // Skip progress
+            Ok(PlexusStreamItem::Done { .. }) => None, // Stream will end
+            Err(e) => Some(Err(e)),
+        }
+    });
+
+    Ok(Box::pin(typed_stream))
+}
+
+/// Clone a repository from forges and configure remotes
+pub async fn clone(client: &PlexusClient, repo_name: String, target: Option<String>) -> Result<Pin<Box<dyn Stream<Item = Result<RepoCloneEvent>> + Send>>> {
+    let stream = client.call_stream("hyperforge.org.juggernautlabs.repos.clone", json!({ "repo_name": repo_name, "target": target })).await?;
+
+    // Filter and transform stream items to typed data
+    let typed_stream = stream.filter_map(|item| async move {
+        match item {
+            Ok(PlexusStreamItem::Data { content, .. }) => {
+                match serde_json::from_value::<RepoCloneEvent>(content) {
                     Ok(data) => Some(Ok(data)),
                     Err(e) => Some(Err(e.into())),
                 }

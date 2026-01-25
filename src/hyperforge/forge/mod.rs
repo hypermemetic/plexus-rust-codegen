@@ -17,15 +17,6 @@ use crate::hyperforge::org::Forge;
 
 // === Types ===
 
-/// Summary of a repository on a forge
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ForgeRepoSummary {
-    pub description: Option<String>,
-    pub name: String,
-    pub private: bool,
-    pub url: String,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum ForgeEvent {
@@ -101,6 +92,15 @@ org_name: String,
     },
 }
 
+/// Summary of a repository on a forge
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ForgeRepoSummary {
+    pub description: Option<String>,
+    pub name: String,
+    pub private: bool,
+    pub url: String,
+}
+
 /// Status of a token for a specific org/forge combination
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
@@ -110,9 +110,14 @@ pub enum TokenStatus {
 
 // === Methods ===
 
-/// List supported forges
-pub async fn list(client: &PlexusClient) -> Result<Pin<Box<dyn Stream<Item = Result<ForgeEvent>> + Send>>> {
-    let stream = client.call_stream("hyperforge.forge.list", serde_json::Value::Null).await?;
+/// Get plugin or method schema. Pass {"method": "name"} for a specific method.
+pub async fn schema(client: &PlexusClient) -> Result<serde_json::Value> {
+    client.call_single("hyperforge.forge.schema", serde_json::Value::Null).await
+}
+
+/// Check authentication status for a forge
+pub async fn auth(client: &PlexusClient, forge: String, org: Option<String>) -> Result<Pin<Box<dyn Stream<Item = Result<ForgeEvent>> + Send>>> {
+    let stream = client.call_stream("hyperforge.forge.auth", json!({ "forge": forge, "org": org })).await?;
 
     // Filter and transform stream items to typed data
     let typed_stream = stream.filter_map(|item| async move {
@@ -166,9 +171,9 @@ pub async fn refresh(client: &PlexusClient, forge: String, org: Option<String>, 
     Ok(Box::pin(typed_stream))
 }
 
-/// Check authentication status for a forge
-pub async fn auth(client: &PlexusClient, forge: String, org: Option<String>) -> Result<Pin<Box<dyn Stream<Item = Result<ForgeEvent>> + Send>>> {
-    let stream = client.call_stream("hyperforge.forge.auth", json!({ "forge": forge, "org": org })).await?;
+/// List supported forges
+pub async fn list(client: &PlexusClient) -> Result<Pin<Box<dyn Stream<Item = Result<ForgeEvent>> + Send>>> {
+    let stream = client.call_stream("hyperforge.forge.list", serde_json::Value::Null).await?;
 
     // Filter and transform stream items to typed data
     let typed_stream = stream.filter_map(|item| async move {
@@ -192,9 +197,4 @@ pub async fn auth(client: &PlexusClient, forge: String, org: Option<String>) -> 
     });
 
     Ok(Box::pin(typed_stream))
-}
-
-/// Get plugin or method schema. Pass {"method": "name"} for a specific method.
-pub async fn schema(client: &PlexusClient) -> Result<serde_json::Value> {
-    client.call_single("hyperforge.forge.schema", serde_json::Value::Null).await
 }

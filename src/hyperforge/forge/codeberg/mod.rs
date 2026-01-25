@@ -13,6 +13,11 @@ use crate::hyperforge::forge::ForgeEvent;
 
 // === Methods ===
 
+/// Get plugin or method schema. Pass {"method": "name"} for a specific method.
+pub async fn schema(client: &PlexusClient) -> Result<serde_json::Value> {
+    client.call_single("hyperforge.forge.codeberg.schema", serde_json::Value::Null).await
+}
+
 /// List repositories for a user
 pub async fn repos_list(client: &PlexusClient, owner: String, token: String) -> Result<Pin<Box<dyn Stream<Item = Result<ForgeEvent>> + Send>>> {
     let stream = client.call_stream("hyperforge.forge.codeberg.repos_list", json!({ "owner": owner, "token": token })).await?;
@@ -39,9 +44,4 @@ pub async fn repos_list(client: &PlexusClient, owner: String, token: String) -> 
     });
 
     Ok(Box::pin(typed_stream))
-}
-
-/// Get plugin or method schema. Pass {"method": "name"} for a specific method.
-pub async fn schema(client: &PlexusClient) -> Result<serde_json::Value> {
-    client.call_single("hyperforge.forge.codeberg.schema", serde_json::Value::Null).await
 }

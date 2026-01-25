@@ -1,8 +1,8 @@
 [package]
-name = "substrate-client"
-version = "0.1.20260125153134-32e46854"
+name = "plexus-client"
+version = "0.1.20260125170504-32e46854"
 edition = "2021"
-description = "Auto-generated Substrate Plexus client (hash: 32e4685441699ea7)"
+description = "Auto-generated Plexus client (hash: 32e4685441699ea7)"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }

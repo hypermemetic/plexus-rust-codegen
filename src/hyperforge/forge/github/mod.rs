@@ -13,9 +13,9 @@ use crate::hyperforge::forge::ForgeEvent;
 
 // === Methods ===
 
-/// List repositories for a user
-pub async fn repos_list(client: &PlexusClient, owner: String, token: String) -> Result<Pin<Box<dyn Stream<Item = Result<ForgeEvent>> + Send>>> {
-    let stream = client.call_stream("hyperforge.forge.github.repos_list", json!({ "owner": owner, "token": token })).await?;
+/// Check authentication status
+pub async fn auth_status(client: &PlexusClient, token: String) -> Result<Pin<Box<dyn Stream<Item = Result<ForgeEvent>> + Send>>> {
+    let stream = client.call_stream("hyperforge.forge.github.auth_status", json!({ "token": token })).await?;
 
     // Filter and transform stream items to typed data
     let typed_stream = stream.filter_map(|item| async move {
@@ -41,9 +41,9 @@ pub async fn repos_list(client: &PlexusClient, owner: String, token: String) -> 
     Ok(Box::pin(typed_stream))
 }
 
-/// Check authentication status
-pub async fn auth_status(client: &PlexusClient, token: String) -> Result<Pin<Box<dyn Stream<Item = Result<ForgeEvent>> + Send>>> {
-    let stream = client.call_stream("hyperforge.forge.github.auth_status", json!({ "token": token })).await?;
+/// List repositories for a user
+pub async fn repos_list(client: &PlexusClient, owner: String, token: String) -> Result<Pin<Box<dyn Stream<Item = Result<ForgeEvent>> + Send>>> {
+    let stream = client.call_stream("hyperforge.forge.github.repos_list", json!({ "owner": owner, "token": token })).await?;
 
     // Filter and transform stream items to typed data
     let typed_stream = stream.filter_map(|item| async move {

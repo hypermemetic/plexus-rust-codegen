@@ -58,14 +58,9 @@ pub enum BodyType {
 
 // === Methods ===
 
-/// Get plugin or method schema. Pass {"method": "name"} for a specific method.
-pub async fn schema(client: &PlexusClient) -> Result<serde_json::Value> {
-    client.call_single("solar.schema", serde_json::Value::Null).await
-}
-
-/// Observe the entire solar system
-pub async fn observe(client: &PlexusClient) -> Result<Pin<Box<dyn Stream<Item = Result<SolarEvent>> + Send>>> {
-    let stream = client.call_stream("solar.observe", serde_json::Value::Null).await?;
+/// Get information about a specific celestial body
+pub async fn info(client: &PlexusClient, path: String) -> Result<Pin<Box<dyn Stream<Item = Result<SolarEvent>> + Send>>> {
+    let stream = client.call_stream("solar.info", json!({ "path": path })).await?;
 
     // Filter and transform stream items to typed data
     let typed_stream = stream.filter_map(|item| async move {
@@ -91,9 +86,14 @@ pub async fn observe(client: &PlexusClient) -> Result<Pin<Box<dyn Stream<Item = 
     Ok(Box::pin(typed_stream))
 }
 
-/// Get information about a specific celestial body
-pub async fn info(client: &PlexusClient, path: String) -> Result<Pin<Box<dyn Stream<Item = Result<SolarEvent>> + Send>>> {
-    let stream = client.call_stream("solar.info", json!({ "path": path })).await?;
+/// Get plugin or method schema. Pass {"method": "name"} for a specific method.
+pub async fn schema(client: &PlexusClient) -> Result<serde_json::Value> {
+    client.call_single("solar.schema", serde_json::Value::Null).await
+}
+
+/// Observe the entire solar system
+pub async fn observe(client: &PlexusClient) -> Result<Pin<Box<dyn Stream<Item = Result<SolarEvent>> + Send>>> {
+    let stream = client.call_stream("solar.observe", serde_json::Value::Null).await?;
 
     // Filter and transform stream items to typed data
     let typed_stream = stream.filter_map(|item| async move {

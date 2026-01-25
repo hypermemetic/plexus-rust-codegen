@@ -41,14 +41,9 @@ pub async fn acquire(client: &PlexusClient, forge: String) -> Result<Pin<Box<dyn
     Ok(Box::pin(typed_stream))
 }
 
-/// Get plugin or method schema. Pass {"method": "name"} for a specific method.
-pub async fn schema(client: &PlexusClient) -> Result<serde_json::Value> {
-    client.call_single("hyperforge.org.juggernautlabs.secrets.schema", serde_json::Value::Null).await
-}
-
-/// Get a secret value
-pub async fn get(client: &PlexusClient, key: String) -> Result<Pin<Box<dyn Stream<Item = Result<SecretEvent>> + Send>>> {
-    let stream = client.call_stream("hyperforge.org.juggernautlabs.secrets.get", json!({ "key": key })).await?;
+/// Delete a secret
+pub async fn delete(client: &PlexusClient, key: String) -> Result<Pin<Box<dyn Stream<Item = Result<SecretEvent>> + Send>>> {
+    let stream = client.call_stream("hyperforge.org.juggernautlabs.secrets.delete", json!({ "key": key })).await?;
 
     // Filter and transform stream items to typed data
     let typed_stream = stream.filter_map(|item| async move {
@@ -102,9 +97,9 @@ pub async fn list(client: &PlexusClient) -> Result<Pin<Box<dyn Stream<Item = Res
     Ok(Box::pin(typed_stream))
 }
 
-/// Delete a secret
-pub async fn delete(client: &PlexusClient, key: String) -> Result<Pin<Box<dyn Stream<Item = Result<SecretEvent>> + Send>>> {
-    let stream = client.call_stream("hyperforge.org.juggernautlabs.secrets.delete", json!({ "key": key })).await?;
+/// Get a secret value
+pub async fn get(client: &PlexusClient, key: String) -> Result<Pin<Box<dyn Stream<Item = Result<SecretEvent>> + Send>>> {
+    let stream = client.call_stream("hyperforge.org.juggernautlabs.secrets.get", json!({ "key": key })).await?;
 
     // Filter and transform stream items to typed data
     let typed_stream = stream.filter_map(|item| async move {
@@ -128,6 +123,11 @@ pub async fn delete(client: &PlexusClient, key: String) -> Result<Pin<Box<dyn St
     });
 
     Ok(Box::pin(typed_stream))
+}
+
+/// Get plugin or method schema. Pass {"method": "name"} for a specific method.
+pub async fn schema(client: &PlexusClient) -> Result<serde_json::Value> {
+    client.call_single("hyperforge.org.juggernautlabs.secrets.schema", serde_json::Value::Null).await
 }
 
 /// Set a secret value

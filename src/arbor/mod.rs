@@ -13,6 +13,31 @@ use crate::cone::UUID;
 
 // === Types ===
 
+/// A conversation tree
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Tree {
+    /// Archived timestamp (Unix seconds)
+    pub archived_at: Option<i64>,
+    /// Creation timestamp (Unix seconds)
+    pub created_at: i64,
+    /// Unique identifier for this tree
+    pub id: UUID,
+    /// Optional tree-level metadata (name, description, etc.)
+    pub metadata: serde_json::Value,
+    /// All nodes in the tree (NodeId -> Node)
+    pub nodes: serde_json::Value,
+    /// Reference count information
+    pub refs: Option<ResourceRefs>,
+    /// Root node ID
+    pub root: UUID,
+    /// Scheduled deletion timestamp (Unix seconds)
+    pub scheduled_deletion_at: Option<i64>,
+    /// Reference counting state
+    pub state: Option<ResourceState>,
+    /// Last modified timestamp (Unix seconds)
+    pub updated_at: i64,
+}
+
 /// Events emitted by Arbor operations
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
@@ -144,50 +169,6 @@ tree_id: UUID,
     },
 }
 
-/// Reference counting information for a resource
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ResourceRefs {
-    /// Who owns references (owner_id -> count)
-    pub owners: serde_json::Value,
-    /// Total reference count
-    pub ref_count: i64,
-}
-
-/// Resource state in deletion lifecycle
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ResourceState {
-    #[serde(rename = "active")]
-    Active,
-    #[serde(rename = "scheduled_delete")]
-    ScheduledDelete,
-    #[serde(rename = "archived")]
-    Archived,
-}
-
-/// Lightweight node representation (just structure, no data)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NodeSkeleton {
-    pub children: Vec<UUID>,
-    pub id: UUID,
-    /// Type indicator (but not the actual data)
-    pub node_type: String,
-    pub parent: Option<UUID>,
-}
-
-/// Node type discriminator
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "lowercase")]
-pub enum NodeType {
-    /// Built-in text node (data stored in Arbor)
-    Text {
-content: String,
-    },
-    /// External data reference
-    External {
-handle: Handle,
-    },
-}
-
 /// A node in the conversation tree
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Node {
@@ -213,38 +194,18 @@ pub struct Node {
     pub state: Option<ResourceState>,
 }
 
-/// A conversation tree
+/// Node type discriminator
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Tree {
-    /// Archived timestamp (Unix seconds)
-    pub archived_at: Option<i64>,
-    /// Creation timestamp (Unix seconds)
-    pub created_at: i64,
-    /// Unique identifier for this tree
-    pub id: UUID,
-    /// Optional tree-level metadata (name, description, etc.)
-    pub metadata: serde_json::Value,
-    /// All nodes in the tree (NodeId -> Node)
-    pub nodes: serde_json::Value,
-    /// Reference count information
-    pub refs: Option<ResourceRefs>,
-    /// Root node ID
-    pub root: UUID,
-    /// Scheduled deletion timestamp (Unix seconds)
-    pub scheduled_deletion_at: Option<i64>,
-    /// Reference counting state
-    pub state: Option<ResourceState>,
-    /// Last modified timestamp (Unix seconds)
-    pub updated_at: i64,
-}
-
-/// Lightweight tree structure
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TreeSkeleton {
-    pub id: UUID,
-    pub nodes: serde_json::Value,
-    pub root: UUID,
-    pub state: Option<ResourceState>,
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum NodeType {
+    /// Built-in text node (data stored in Arbor)
+    Text {
+content: String,
+    },
+    /// External data reference
+    External {
+handle: Handle,
+    },
 }
 
 /// Handle pointing to external data with versioning
@@ -268,207 +229,50 @@ pub struct Handle {
     pub version: String,
 }
 
+/// Lightweight node representation (just structure, no data)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NodeSkeleton {
+    pub children: Vec<UUID>,
+    pub id: UUID,
+    /// Type indicator (but not the actual data)
+    pub node_type: String,
+    pub parent: Option<UUID>,
+}
+
+/// Resource state in deletion lifecycle
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ResourceState {
+    #[serde(rename = "active")]
+    Active,
+    #[serde(rename = "scheduled_delete")]
+    ScheduledDelete,
+    #[serde(rename = "archived")]
+    Archived,
+}
+
+/// Lightweight tree structure
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TreeSkeleton {
+    pub id: UUID,
+    pub nodes: serde_json::Value,
+    pub root: UUID,
+    pub state: Option<ResourceState>,
+}
+
+/// Reference counting information for a resource
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResourceRefs {
+    /// Who owns references (owner_id -> count)
+    pub owners: serde_json::Value,
+    /// Total reference count
+    pub ref_count: i64,
+}
+
 // === Methods ===
 
-/// Get the path from root to a node
-pub async fn node_get_path(client: &PlexusClient, node_id: UUID, tree_id: UUID) -> Result<Pin<Box<dyn Stream<Item = Result<ArborEvent>> + Send>>> {
-    let stream = client.call_stream("arbor.node_get_path", json!({ "node_id": node_id, "tree_id": tree_id })).await?;
-
-    // Filter and transform stream items to typed data
-    let typed_stream = stream.filter_map(|item| async move {
-        match item {
-            Ok(PlexusStreamItem::Data { content, .. }) => {
-                match serde_json::from_value::<ArborEvent>(content) {
-                    Ok(data) => Some(Ok(data)),
-                    Err(e) => Some(Err(e.into())),
-                }
-            }
-            Ok(PlexusStreamItem::Error { message, code, .. }) => {
-                Some(Err(anyhow!("Plexus error{}: {}",
-                    code.map(|c| format!(" [{}]", c)).unwrap_or_default(),
-                    message
-                )))
-            }
-            Ok(PlexusStreamItem::Progress { .. }) => None, // Skip progress
-            Ok(PlexusStreamItem::Done { .. }) => None, // Stream will end
-            Err(e) => Some(Err(e)),
-        }
-    });
-
-    Ok(Box::pin(typed_stream))
-}
-
-/// List all active trees
-pub async fn tree_list(client: &PlexusClient) -> Result<Pin<Box<dyn Stream<Item = Result<ArborEvent>> + Send>>> {
-    let stream = client.call_stream("arbor.tree_list", serde_json::Value::Null).await?;
-
-    // Filter and transform stream items to typed data
-    let typed_stream = stream.filter_map(|item| async move {
-        match item {
-            Ok(PlexusStreamItem::Data { content, .. }) => {
-                match serde_json::from_value::<ArborEvent>(content) {
-                    Ok(data) => Some(Ok(data)),
-                    Err(e) => Some(Err(e.into())),
-                }
-            }
-            Ok(PlexusStreamItem::Error { message, code, .. }) => {
-                Some(Err(anyhow!("Plexus error{}: {}",
-                    code.map(|c| format!(" [{}]", c)).unwrap_or_default(),
-                    message
-                )))
-            }
-            Ok(PlexusStreamItem::Progress { .. }) => None, // Skip progress
-            Ok(PlexusStreamItem::Done { .. }) => None, // Stream will end
-            Err(e) => Some(Err(e)),
-        }
-    });
-
-    Ok(Box::pin(typed_stream))
-}
-
-/// List all leaf nodes in a tree
-pub async fn context_list_leaves(client: &PlexusClient, tree_id: UUID) -> Result<Pin<Box<dyn Stream<Item = Result<ArborEvent>> + Send>>> {
-    let stream = client.call_stream("arbor.context_list_leaves", json!({ "tree_id": tree_id })).await?;
-
-    // Filter and transform stream items to typed data
-    let typed_stream = stream.filter_map(|item| async move {
-        match item {
-            Ok(PlexusStreamItem::Data { content, .. }) => {
-                match serde_json::from_value::<ArborEvent>(content) {
-                    Ok(data) => Some(Ok(data)),
-                    Err(e) => Some(Err(e.into())),
-                }
-            }
-            Ok(PlexusStreamItem::Error { message, code, .. }) => {
-                Some(Err(anyhow!("Plexus error{}: {}",
-                    code.map(|c| format!(" [{}]", c)).unwrap_or_default(),
-                    message
-                )))
-            }
-            Ok(PlexusStreamItem::Progress { .. }) => None, // Skip progress
-            Ok(PlexusStreamItem::Done { .. }) => None, // Stream will end
-            Err(e) => Some(Err(e)),
-        }
-    });
-
-    Ok(Box::pin(typed_stream))
-}
-
-/// Get lightweight tree structure without node data
-pub async fn tree_get_skeleton(client: &PlexusClient, tree_id: UUID) -> Result<Pin<Box<dyn Stream<Item = Result<ArborEvent>> + Send>>> {
-    let stream = client.call_stream("arbor.tree_get_skeleton", json!({ "tree_id": tree_id })).await?;
-
-    // Filter and transform stream items to typed data
-    let typed_stream = stream.filter_map(|item| async move {
-        match item {
-            Ok(PlexusStreamItem::Data { content, .. }) => {
-                match serde_json::from_value::<ArborEvent>(content) {
-                    Ok(data) => Some(Ok(data)),
-                    Err(e) => Some(Err(e.into())),
-                }
-            }
-            Ok(PlexusStreamItem::Error { message, code, .. }) => {
-                Some(Err(anyhow!("Plexus error{}: {}",
-                    code.map(|c| format!(" [{}]", c)).unwrap_or_default(),
-                    message
-                )))
-            }
-            Ok(PlexusStreamItem::Progress { .. }) => None, // Skip progress
-            Ok(PlexusStreamItem::Done { .. }) => None, // Stream will end
-            Err(e) => Some(Err(e)),
-        }
-    });
-
-    Ok(Box::pin(typed_stream))
-}
-
-/// Retrieve a complete tree with all nodes
-pub async fn tree_get(client: &PlexusClient, tree_id: UUID) -> Result<Pin<Box<dyn Stream<Item = Result<ArborEvent>> + Send>>> {
-    let stream = client.call_stream("arbor.tree_get", json!({ "tree_id": tree_id })).await?;
-
-    // Filter and transform stream items to typed data
-    let typed_stream = stream.filter_map(|item| async move {
-        match item {
-            Ok(PlexusStreamItem::Data { content, .. }) => {
-                match serde_json::from_value::<ArborEvent>(content) {
-                    Ok(data) => Some(Ok(data)),
-                    Err(e) => Some(Err(e.into())),
-                }
-            }
-            Ok(PlexusStreamItem::Error { message, code, .. }) => {
-                Some(Err(anyhow!("Plexus error{}: {}",
-                    code.map(|c| format!(" [{}]", c)).unwrap_or_default(),
-                    message
-                )))
-            }
-            Ok(PlexusStreamItem::Progress { .. }) => None, // Skip progress
-            Ok(PlexusStreamItem::Done { .. }) => None, // Stream will end
-            Err(e) => Some(Err(e)),
-        }
-    });
-
-    Ok(Box::pin(typed_stream))
-}
-
-/// Create a text node in a tree
-pub async fn node_create_text(client: &PlexusClient, content: String, metadata: serde_json::Value, parent: Option<UUID>, tree_id: UUID) -> Result<Pin<Box<dyn Stream<Item = Result<ArborEvent>> + Send>>> {
-    let stream = client.call_stream("arbor.node_create_text", json!({ "content": content, "metadata": metadata, "parent": parent, "tree_id": tree_id })).await?;
-
-    // Filter and transform stream items to typed data
-    let typed_stream = stream.filter_map(|item| async move {
-        match item {
-            Ok(PlexusStreamItem::Data { content, .. }) => {
-                match serde_json::from_value::<ArborEvent>(content) {
-                    Ok(data) => Some(Ok(data)),
-                    Err(e) => Some(Err(e.into())),
-                }
-            }
-            Ok(PlexusStreamItem::Error { message, code, .. }) => {
-                Some(Err(anyhow!("Plexus error{}: {}",
-                    code.map(|c| format!(" [{}]", c)).unwrap_or_default(),
-                    message
-                )))
-            }
-            Ok(PlexusStreamItem::Progress { .. }) => None, // Skip progress
-            Ok(PlexusStreamItem::Done { .. }) => None, // Stream will end
-            Err(e) => Some(Err(e)),
-        }
-    });
-
-    Ok(Box::pin(typed_stream))
-}
-
-/// Get the children of a node
-pub async fn node_get_children(client: &PlexusClient, node_id: UUID, tree_id: UUID) -> Result<Pin<Box<dyn Stream<Item = Result<ArborEvent>> + Send>>> {
-    let stream = client.call_stream("arbor.node_get_children", json!({ "node_id": node_id, "tree_id": tree_id })).await?;
-
-    // Filter and transform stream items to typed data
-    let typed_stream = stream.filter_map(|item| async move {
-        match item {
-            Ok(PlexusStreamItem::Data { content, .. }) => {
-                match serde_json::from_value::<ArborEvent>(content) {
-                    Ok(data) => Some(Ok(data)),
-                    Err(e) => Some(Err(e.into())),
-                }
-            }
-            Ok(PlexusStreamItem::Error { message, code, .. }) => {
-                Some(Err(anyhow!("Plexus error{}: {}",
-                    code.map(|c| format!(" [{}]", c)).unwrap_or_default(),
-                    message
-                )))
-            }
-            Ok(PlexusStreamItem::Progress { .. }) => None, // Skip progress
-            Ok(PlexusStreamItem::Done { .. }) => None, // Stream will end
-            Err(e) => Some(Err(e)),
-        }
-    });
-
-    Ok(Box::pin(typed_stream))
-}
-
-/// Release ownership of a tree (decrement reference count)
-pub async fn tree_release(client: &PlexusClient, count: i64, owner_id: String, tree_id: UUID) -> Result<Pin<Box<dyn Stream<Item = Result<ArborEvent>> + Send>>> {
-    let stream = client.call_stream("arbor.tree_release", json!({ "count": count, "owner_id": owner_id, "tree_id": tree_id })).await?;
+/// Update tree metadata
+pub async fn tree_update_metadata(client: &PlexusClient, metadata: serde_json::Value, tree_id: UUID) -> Result<Pin<Box<dyn Stream<Item = Result<ArborEvent>> + Send>>> {
+    let stream = client.call_stream("arbor.tree_update_metadata", json!({ "metadata": metadata, "tree_id": tree_id })).await?;
 
     // Filter and transform stream items to typed data
     let typed_stream = stream.filter_map(|item| async move {
@@ -499,121 +303,9 @@ pub async fn schema(client: &PlexusClient) -> Result<serde_json::Value> {
     client.call_single("arbor.schema", serde_json::Value::Null).await
 }
 
-/// Get the parent of a node
-pub async fn node_get_parent(client: &PlexusClient, node_id: UUID, tree_id: UUID) -> Result<Pin<Box<dyn Stream<Item = Result<ArborEvent>> + Send>>> {
-    let stream = client.call_stream("arbor.node_get_parent", json!({ "node_id": node_id, "tree_id": tree_id })).await?;
-
-    // Filter and transform stream items to typed data
-    let typed_stream = stream.filter_map(|item| async move {
-        match item {
-            Ok(PlexusStreamItem::Data { content, .. }) => {
-                match serde_json::from_value::<ArborEvent>(content) {
-                    Ok(data) => Some(Ok(data)),
-                    Err(e) => Some(Err(e.into())),
-                }
-            }
-            Ok(PlexusStreamItem::Error { message, code, .. }) => {
-                Some(Err(anyhow!("Plexus error{}: {}",
-                    code.map(|c| format!(" [{}]", c)).unwrap_or_default(),
-                    message
-                )))
-            }
-            Ok(PlexusStreamItem::Progress { .. }) => None, // Skip progress
-            Ok(PlexusStreamItem::Done { .. }) => None, // Stream will end
-            Err(e) => Some(Err(e)),
-        }
-    });
-
-    Ok(Box::pin(typed_stream))
-}
-
-/// Render tree as text visualization  If parent context is available, automatically resolves handles to show actual content. Otherwise, shows handle references.
-pub async fn tree_render(client: &PlexusClient, tree_id: UUID) -> Result<Pin<Box<dyn Stream<Item = Result<ArborEvent>> + Send>>> {
-    let stream = client.call_stream("arbor.tree_render", json!({ "tree_id": tree_id })).await?;
-
-    // Filter and transform stream items to typed data
-    let typed_stream = stream.filter_map(|item| async move {
-        match item {
-            Ok(PlexusStreamItem::Data { content, .. }) => {
-                match serde_json::from_value::<ArborEvent>(content) {
-                    Ok(data) => Some(Ok(data)),
-                    Err(e) => Some(Err(e.into())),
-                }
-            }
-            Ok(PlexusStreamItem::Error { message, code, .. }) => {
-                Some(Err(anyhow!("Plexus error{}: {}",
-                    code.map(|c| format!(" [{}]", c)).unwrap_or_default(),
-                    message
-                )))
-            }
-            Ok(PlexusStreamItem::Progress { .. }) => None, // Skip progress
-            Ok(PlexusStreamItem::Done { .. }) => None, // Stream will end
-            Err(e) => Some(Err(e)),
-        }
-    });
-
-    Ok(Box::pin(typed_stream))
-}
-
-/// Create an external node in a tree
-pub async fn node_create_external(client: &PlexusClient, handle: Handle, metadata: serde_json::Value, parent: Option<UUID>, tree_id: UUID) -> Result<Pin<Box<dyn Stream<Item = Result<ArborEvent>> + Send>>> {
-    let stream = client.call_stream("arbor.node_create_external", json!({ "handle": handle, "metadata": metadata, "parent": parent, "tree_id": tree_id })).await?;
-
-    // Filter and transform stream items to typed data
-    let typed_stream = stream.filter_map(|item| async move {
-        match item {
-            Ok(PlexusStreamItem::Data { content, .. }) => {
-                match serde_json::from_value::<ArborEvent>(content) {
-                    Ok(data) => Some(Ok(data)),
-                    Err(e) => Some(Err(e.into())),
-                }
-            }
-            Ok(PlexusStreamItem::Error { message, code, .. }) => {
-                Some(Err(anyhow!("Plexus error{}: {}",
-                    code.map(|c| format!(" [{}]", c)).unwrap_or_default(),
-                    message
-                )))
-            }
-            Ok(PlexusStreamItem::Progress { .. }) => None, // Skip progress
-            Ok(PlexusStreamItem::Done { .. }) => None, // Stream will end
-            Err(e) => Some(Err(e)),
-        }
-    });
-
-    Ok(Box::pin(typed_stream))
-}
-
-/// Get all external handles in the path to a node
-pub async fn context_get_handles(client: &PlexusClient, node_id: UUID, tree_id: UUID) -> Result<Pin<Box<dyn Stream<Item = Result<ArborEvent>> + Send>>> {
-    let stream = client.call_stream("arbor.context_get_handles", json!({ "node_id": node_id, "tree_id": tree_id })).await?;
-
-    // Filter and transform stream items to typed data
-    let typed_stream = stream.filter_map(|item| async move {
-        match item {
-            Ok(PlexusStreamItem::Data { content, .. }) => {
-                match serde_json::from_value::<ArborEvent>(content) {
-                    Ok(data) => Some(Ok(data)),
-                    Err(e) => Some(Err(e.into())),
-                }
-            }
-            Ok(PlexusStreamItem::Error { message, code, .. }) => {
-                Some(Err(anyhow!("Plexus error{}: {}",
-                    code.map(|c| format!(" [{}]", c)).unwrap_or_default(),
-                    message
-                )))
-            }
-            Ok(PlexusStreamItem::Progress { .. }) => None, // Skip progress
-            Ok(PlexusStreamItem::Done { .. }) => None, // Stream will end
-            Err(e) => Some(Err(e)),
-        }
-    });
-
-    Ok(Box::pin(typed_stream))
-}
-
-/// Get a node by ID
-pub async fn node_get(client: &PlexusClient, node_id: UUID, tree_id: UUID) -> Result<Pin<Box<dyn Stream<Item = Result<ArborEvent>> + Send>>> {
-    let stream = client.call_stream("arbor.node_get", json!({ "node_id": node_id, "tree_id": tree_id })).await?;
+/// List all active trees
+pub async fn tree_list(client: &PlexusClient) -> Result<Pin<Box<dyn Stream<Item = Result<ArborEvent>> + Send>>> {
+    let stream = client.call_stream("arbor.tree_list", serde_json::Value::Null).await?;
 
     // Filter and transform stream items to typed data
     let typed_stream = stream.filter_map(|item| async move {
@@ -667,9 +359,149 @@ pub async fn context_get_path(client: &PlexusClient, node_id: UUID, tree_id: UUI
     Ok(Box::pin(typed_stream))
 }
 
-/// List trees scheduled for deletion
-pub async fn tree_list_scheduled(client: &PlexusClient) -> Result<Pin<Box<dyn Stream<Item = Result<ArborEvent>> + Send>>> {
-    let stream = client.call_stream("arbor.tree_list_scheduled", serde_json::Value::Null).await?;
+/// Create an external node in a tree
+pub async fn node_create_external(client: &PlexusClient, handle: Handle, metadata: serde_json::Value, parent: Option<UUID>, tree_id: UUID) -> Result<Pin<Box<dyn Stream<Item = Result<ArborEvent>> + Send>>> {
+    let stream = client.call_stream("arbor.node_create_external", json!({ "handle": handle, "metadata": metadata, "parent": parent, "tree_id": tree_id })).await?;
+
+    // Filter and transform stream items to typed data
+    let typed_stream = stream.filter_map(|item| async move {
+        match item {
+            Ok(PlexusStreamItem::Data { content, .. }) => {
+                match serde_json::from_value::<ArborEvent>(content) {
+                    Ok(data) => Some(Ok(data)),
+                    Err(e) => Some(Err(e.into())),
+                }
+            }
+            Ok(PlexusStreamItem::Error { message, code, .. }) => {
+                Some(Err(anyhow!("Plexus error{}: {}",
+                    code.map(|c| format!(" [{}]", c)).unwrap_or_default(),
+                    message
+                )))
+            }
+            Ok(PlexusStreamItem::Progress { .. }) => None, // Skip progress
+            Ok(PlexusStreamItem::Done { .. }) => None, // Stream will end
+            Err(e) => Some(Err(e)),
+        }
+    });
+
+    Ok(Box::pin(typed_stream))
+}
+
+/// List all leaf nodes in a tree
+pub async fn context_list_leaves(client: &PlexusClient, tree_id: UUID) -> Result<Pin<Box<dyn Stream<Item = Result<ArborEvent>> + Send>>> {
+    let stream = client.call_stream("arbor.context_list_leaves", json!({ "tree_id": tree_id })).await?;
+
+    // Filter and transform stream items to typed data
+    let typed_stream = stream.filter_map(|item| async move {
+        match item {
+            Ok(PlexusStreamItem::Data { content, .. }) => {
+                match serde_json::from_value::<ArborEvent>(content) {
+                    Ok(data) => Some(Ok(data)),
+                    Err(e) => Some(Err(e.into())),
+                }
+            }
+            Ok(PlexusStreamItem::Error { message, code, .. }) => {
+                Some(Err(anyhow!("Plexus error{}: {}",
+                    code.map(|c| format!(" [{}]", c)).unwrap_or_default(),
+                    message
+                )))
+            }
+            Ok(PlexusStreamItem::Progress { .. }) => None, // Skip progress
+            Ok(PlexusStreamItem::Done { .. }) => None, // Stream will end
+            Err(e) => Some(Err(e)),
+        }
+    });
+
+    Ok(Box::pin(typed_stream))
+}
+
+/// Create a text node in a tree
+pub async fn node_create_text(client: &PlexusClient, content: String, metadata: serde_json::Value, parent: Option<UUID>, tree_id: UUID) -> Result<Pin<Box<dyn Stream<Item = Result<ArborEvent>> + Send>>> {
+    let stream = client.call_stream("arbor.node_create_text", json!({ "content": content, "metadata": metadata, "parent": parent, "tree_id": tree_id })).await?;
+
+    // Filter and transform stream items to typed data
+    let typed_stream = stream.filter_map(|item| async move {
+        match item {
+            Ok(PlexusStreamItem::Data { content, .. }) => {
+                match serde_json::from_value::<ArborEvent>(content) {
+                    Ok(data) => Some(Ok(data)),
+                    Err(e) => Some(Err(e.into())),
+                }
+            }
+            Ok(PlexusStreamItem::Error { message, code, .. }) => {
+                Some(Err(anyhow!("Plexus error{}: {}",
+                    code.map(|c| format!(" [{}]", c)).unwrap_or_default(),
+                    message
+                )))
+            }
+            Ok(PlexusStreamItem::Progress { .. }) => None, // Skip progress
+            Ok(PlexusStreamItem::Done { .. }) => None, // Stream will end
+            Err(e) => Some(Err(e)),
+        }
+    });
+
+    Ok(Box::pin(typed_stream))
+}
+
+/// Get a node by ID
+pub async fn node_get(client: &PlexusClient, node_id: UUID, tree_id: UUID) -> Result<Pin<Box<dyn Stream<Item = Result<ArborEvent>> + Send>>> {
+    let stream = client.call_stream("arbor.node_get", json!({ "node_id": node_id, "tree_id": tree_id })).await?;
+
+    // Filter and transform stream items to typed data
+    let typed_stream = stream.filter_map(|item| async move {
+        match item {
+            Ok(PlexusStreamItem::Data { content, .. }) => {
+                match serde_json::from_value::<ArborEvent>(content) {
+                    Ok(data) => Some(Ok(data)),
+                    Err(e) => Some(Err(e.into())),
+                }
+            }
+            Ok(PlexusStreamItem::Error { message, code, .. }) => {
+                Some(Err(anyhow!("Plexus error{}: {}",
+                    code.map(|c| format!(" [{}]", c)).unwrap_or_default(),
+                    message
+                )))
+            }
+            Ok(PlexusStreamItem::Progress { .. }) => None, // Skip progress
+            Ok(PlexusStreamItem::Done { .. }) => None, // Stream will end
+            Err(e) => Some(Err(e)),
+        }
+    });
+
+    Ok(Box::pin(typed_stream))
+}
+
+/// Get the path from root to a node
+pub async fn node_get_path(client: &PlexusClient, node_id: UUID, tree_id: UUID) -> Result<Pin<Box<dyn Stream<Item = Result<ArborEvent>> + Send>>> {
+    let stream = client.call_stream("arbor.node_get_path", json!({ "node_id": node_id, "tree_id": tree_id })).await?;
+
+    // Filter and transform stream items to typed data
+    let typed_stream = stream.filter_map(|item| async move {
+        match item {
+            Ok(PlexusStreamItem::Data { content, .. }) => {
+                match serde_json::from_value::<ArborEvent>(content) {
+                    Ok(data) => Some(Ok(data)),
+                    Err(e) => Some(Err(e.into())),
+                }
+            }
+            Ok(PlexusStreamItem::Error { message, code, .. }) => {
+                Some(Err(anyhow!("Plexus error{}: {}",
+                    code.map(|c| format!(" [{}]", c)).unwrap_or_default(),
+                    message
+                )))
+            }
+            Ok(PlexusStreamItem::Progress { .. }) => None, // Skip progress
+            Ok(PlexusStreamItem::Done { .. }) => None, // Stream will end
+            Err(e) => Some(Err(e)),
+        }
+    });
+
+    Ok(Box::pin(typed_stream))
+}
+
+/// Get the parent of a node
+pub async fn node_get_parent(client: &PlexusClient, node_id: UUID, tree_id: UUID) -> Result<Pin<Box<dyn Stream<Item = Result<ArborEvent>> + Send>>> {
+    let stream = client.call_stream("arbor.node_get_parent", json!({ "node_id": node_id, "tree_id": tree_id })).await?;
 
     // Filter and transform stream items to typed data
     let typed_stream = stream.filter_map(|item| async move {
@@ -723,9 +555,37 @@ pub async fn tree_claim(client: &PlexusClient, count: i64, owner_id: String, tre
     Ok(Box::pin(typed_stream))
 }
 
-/// Update tree metadata
-pub async fn tree_update_metadata(client: &PlexusClient, metadata: serde_json::Value, tree_id: UUID) -> Result<Pin<Box<dyn Stream<Item = Result<ArborEvent>> + Send>>> {
-    let stream = client.call_stream("arbor.tree_update_metadata", json!({ "metadata": metadata, "tree_id": tree_id })).await?;
+/// Retrieve a complete tree with all nodes
+pub async fn tree_get(client: &PlexusClient, tree_id: UUID) -> Result<Pin<Box<dyn Stream<Item = Result<ArborEvent>> + Send>>> {
+    let stream = client.call_stream("arbor.tree_get", json!({ "tree_id": tree_id })).await?;
+
+    // Filter and transform stream items to typed data
+    let typed_stream = stream.filter_map(|item| async move {
+        match item {
+            Ok(PlexusStreamItem::Data { content, .. }) => {
+                match serde_json::from_value::<ArborEvent>(content) {
+                    Ok(data) => Some(Ok(data)),
+                    Err(e) => Some(Err(e.into())),
+                }
+            }
+            Ok(PlexusStreamItem::Error { message, code, .. }) => {
+                Some(Err(anyhow!("Plexus error{}: {}",
+                    code.map(|c| format!(" [{}]", c)).unwrap_or_default(),
+                    message
+                )))
+            }
+            Ok(PlexusStreamItem::Progress { .. }) => None, // Skip progress
+            Ok(PlexusStreamItem::Done { .. }) => None, // Stream will end
+            Err(e) => Some(Err(e)),
+        }
+    });
+
+    Ok(Box::pin(typed_stream))
+}
+
+/// Get all external handles in the path to a node
+pub async fn context_get_handles(client: &PlexusClient, node_id: UUID, tree_id: UUID) -> Result<Pin<Box<dyn Stream<Item = Result<ArborEvent>> + Send>>> {
+    let stream = client.call_stream("arbor.context_get_handles", json!({ "node_id": node_id, "tree_id": tree_id })).await?;
 
     // Filter and transform stream items to typed data
     let typed_stream = stream.filter_map(|item| async move {
@@ -779,9 +639,149 @@ pub async fn tree_create(client: &PlexusClient, metadata: serde_json::Value, own
     Ok(Box::pin(typed_stream))
 }
 
+/// Get lightweight tree structure without node data
+pub async fn tree_get_skeleton(client: &PlexusClient, tree_id: UUID) -> Result<Pin<Box<dyn Stream<Item = Result<ArborEvent>> + Send>>> {
+    let stream = client.call_stream("arbor.tree_get_skeleton", json!({ "tree_id": tree_id })).await?;
+
+    // Filter and transform stream items to typed data
+    let typed_stream = stream.filter_map(|item| async move {
+        match item {
+            Ok(PlexusStreamItem::Data { content, .. }) => {
+                match serde_json::from_value::<ArborEvent>(content) {
+                    Ok(data) => Some(Ok(data)),
+                    Err(e) => Some(Err(e.into())),
+                }
+            }
+            Ok(PlexusStreamItem::Error { message, code, .. }) => {
+                Some(Err(anyhow!("Plexus error{}: {}",
+                    code.map(|c| format!(" [{}]", c)).unwrap_or_default(),
+                    message
+                )))
+            }
+            Ok(PlexusStreamItem::Progress { .. }) => None, // Skip progress
+            Ok(PlexusStreamItem::Done { .. }) => None, // Stream will end
+            Err(e) => Some(Err(e)),
+        }
+    });
+
+    Ok(Box::pin(typed_stream))
+}
+
+/// Release ownership of a tree (decrement reference count)
+pub async fn tree_release(client: &PlexusClient, count: i64, owner_id: String, tree_id: UUID) -> Result<Pin<Box<dyn Stream<Item = Result<ArborEvent>> + Send>>> {
+    let stream = client.call_stream("arbor.tree_release", json!({ "count": count, "owner_id": owner_id, "tree_id": tree_id })).await?;
+
+    // Filter and transform stream items to typed data
+    let typed_stream = stream.filter_map(|item| async move {
+        match item {
+            Ok(PlexusStreamItem::Data { content, .. }) => {
+                match serde_json::from_value::<ArborEvent>(content) {
+                    Ok(data) => Some(Ok(data)),
+                    Err(e) => Some(Err(e.into())),
+                }
+            }
+            Ok(PlexusStreamItem::Error { message, code, .. }) => {
+                Some(Err(anyhow!("Plexus error{}: {}",
+                    code.map(|c| format!(" [{}]", c)).unwrap_or_default(),
+                    message
+                )))
+            }
+            Ok(PlexusStreamItem::Progress { .. }) => None, // Skip progress
+            Ok(PlexusStreamItem::Done { .. }) => None, // Stream will end
+            Err(e) => Some(Err(e)),
+        }
+    });
+
+    Ok(Box::pin(typed_stream))
+}
+
+/// Render tree as text visualization  If parent context is available, automatically resolves handles to show actual content. Otherwise, shows handle references.
+pub async fn tree_render(client: &PlexusClient, tree_id: UUID) -> Result<Pin<Box<dyn Stream<Item = Result<ArborEvent>> + Send>>> {
+    let stream = client.call_stream("arbor.tree_render", json!({ "tree_id": tree_id })).await?;
+
+    // Filter and transform stream items to typed data
+    let typed_stream = stream.filter_map(|item| async move {
+        match item {
+            Ok(PlexusStreamItem::Data { content, .. }) => {
+                match serde_json::from_value::<ArborEvent>(content) {
+                    Ok(data) => Some(Ok(data)),
+                    Err(e) => Some(Err(e.into())),
+                }
+            }
+            Ok(PlexusStreamItem::Error { message, code, .. }) => {
+                Some(Err(anyhow!("Plexus error{}: {}",
+                    code.map(|c| format!(" [{}]", c)).unwrap_or_default(),
+                    message
+                )))
+            }
+            Ok(PlexusStreamItem::Progress { .. }) => None, // Skip progress
+            Ok(PlexusStreamItem::Done { .. }) => None, // Stream will end
+            Err(e) => Some(Err(e)),
+        }
+    });
+
+    Ok(Box::pin(typed_stream))
+}
+
+/// Get the children of a node
+pub async fn node_get_children(client: &PlexusClient, node_id: UUID, tree_id: UUID) -> Result<Pin<Box<dyn Stream<Item = Result<ArborEvent>> + Send>>> {
+    let stream = client.call_stream("arbor.node_get_children", json!({ "node_id": node_id, "tree_id": tree_id })).await?;
+
+    // Filter and transform stream items to typed data
+    let typed_stream = stream.filter_map(|item| async move {
+        match item {
+            Ok(PlexusStreamItem::Data { content, .. }) => {
+                match serde_json::from_value::<ArborEvent>(content) {
+                    Ok(data) => Some(Ok(data)),
+                    Err(e) => Some(Err(e.into())),
+                }
+            }
+            Ok(PlexusStreamItem::Error { message, code, .. }) => {
+                Some(Err(anyhow!("Plexus error{}: {}",
+                    code.map(|c| format!(" [{}]", c)).unwrap_or_default(),
+                    message
+                )))
+            }
+            Ok(PlexusStreamItem::Progress { .. }) => None, // Skip progress
+            Ok(PlexusStreamItem::Done { .. }) => None, // Stream will end
+            Err(e) => Some(Err(e)),
+        }
+    });
+
+    Ok(Box::pin(typed_stream))
+}
+
 /// List archived trees
 pub async fn tree_list_archived(client: &PlexusClient) -> Result<Pin<Box<dyn Stream<Item = Result<ArborEvent>> + Send>>> {
     let stream = client.call_stream("arbor.tree_list_archived", serde_json::Value::Null).await?;
+
+    // Filter and transform stream items to typed data
+    let typed_stream = stream.filter_map(|item| async move {
+        match item {
+            Ok(PlexusStreamItem::Data { content, .. }) => {
+                match serde_json::from_value::<ArborEvent>(content) {
+                    Ok(data) => Some(Ok(data)),
+                    Err(e) => Some(Err(e.into())),
+                }
+            }
+            Ok(PlexusStreamItem::Error { message, code, .. }) => {
+                Some(Err(anyhow!("Plexus error{}: {}",
+                    code.map(|c| format!(" [{}]", c)).unwrap_or_default(),
+                    message
+                )))
+            }
+            Ok(PlexusStreamItem::Progress { .. }) => None, // Skip progress
+            Ok(PlexusStreamItem::Done { .. }) => None, // Stream will end
+            Err(e) => Some(Err(e)),
+        }
+    });
+
+    Ok(Box::pin(typed_stream))
+}
+
+/// List trees scheduled for deletion
+pub async fn tree_list_scheduled(client: &PlexusClient) -> Result<Pin<Box<dyn Stream<Item = Result<ArborEvent>> + Send>>> {
+    let stream = client.call_stream("arbor.tree_list_scheduled", serde_json::Value::Null).await?;
 
     // Filter and transform stream items to typed data
     let typed_stream = stream.filter_map(|item| async move {

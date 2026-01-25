@@ -12,15 +12,15 @@ use std::pin::Pin;
 // === Types ===
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "lowercase")]
-pub enum ResolutionSource {
-
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkspaceBinding {
     pub org_name: String,
     pub path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum ResolutionSource {
+
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -158,65 +158,9 @@ workspace_path: String,
 
 // === Methods ===
 
-/// Clone all repos for all orgs bound to current workspace
-pub async fn clone_all(client: &PlexusClient) -> Result<Pin<Box<dyn Stream<Item = Result<WorkspaceEvent>> + Send>>> {
-    let stream = client.call_stream("hyperforge.workspace.clone_all", serde_json::Value::Null).await?;
-
-    // Filter and transform stream items to typed data
-    let typed_stream = stream.filter_map(|item| async move {
-        match item {
-            Ok(PlexusStreamItem::Data { content, .. }) => {
-                match serde_json::from_value::<WorkspaceEvent>(content) {
-                    Ok(data) => Some(Ok(data)),
-                    Err(e) => Some(Err(e.into())),
-                }
-            }
-            Ok(PlexusStreamItem::Error { message, code, .. }) => {
-                Some(Err(anyhow!("Plexus error{}: {}",
-                    code.map(|c| format!(" [{}]", c)).unwrap_or_default(),
-                    message
-                )))
-            }
-            Ok(PlexusStreamItem::Progress { .. }) => None, // Skip progress
-            Ok(PlexusStreamItem::Done { .. }) => None, // Stream will end
-            Err(e) => Some(Err(e)),
-        }
-    });
-
-    Ok(Box::pin(typed_stream))
-}
-
-/// Show diff for all orgs bound to current workspace
-pub async fn diff(client: &PlexusClient, path: Option<String>) -> Result<Pin<Box<dyn Stream<Item = Result<WorkspaceEvent>> + Send>>> {
-    let stream = client.call_stream("hyperforge.workspace.diff", json!({ "path": path })).await?;
-
-    // Filter and transform stream items to typed data
-    let typed_stream = stream.filter_map(|item| async move {
-        match item {
-            Ok(PlexusStreamItem::Data { content, .. }) => {
-                match serde_json::from_value::<WorkspaceEvent>(content) {
-                    Ok(data) => Some(Ok(data)),
-                    Err(e) => Some(Err(e.into())),
-                }
-            }
-            Ok(PlexusStreamItem::Error { message, code, .. }) => {
-                Some(Err(anyhow!("Plexus error{}: {}",
-                    code.map(|c| format!(" [{}]", c)).unwrap_or_default(),
-                    message
-                )))
-            }
-            Ok(PlexusStreamItem::Progress { .. }) => None, // Skip progress
-            Ok(PlexusStreamItem::Done { .. }) => None, // Stream will end
-            Err(e) => Some(Err(e)),
-        }
-    });
-
-    Ok(Box::pin(typed_stream))
-}
-
-/// Show current workspace resolution
-pub async fn show(client: &PlexusClient, path: Option<String>) -> Result<Pin<Box<dyn Stream<Item = Result<WorkspaceEvent>> + Send>>> {
-    let stream = client.call_stream("hyperforge.workspace.show", json!({ "path": path })).await?;
+/// Sync repos for all orgs bound to current workspace
+pub async fn sync(client: &PlexusClient, yes: Option<bool>) -> Result<Pin<Box<dyn Stream<Item = Result<WorkspaceEvent>> + Send>>> {
+    let stream = client.call_stream("hyperforge.workspace.sync", json!({ "yes": yes })).await?;
 
     // Filter and transform stream items to typed data
     let typed_stream = stream.filter_map(|item| async move {
@@ -298,9 +242,9 @@ pub async fn import(client: &PlexusClient, include_private: Option<bool>) -> Res
     Ok(Box::pin(typed_stream))
 }
 
-/// List all workspace bindings
-pub async fn list(client: &PlexusClient) -> Result<Pin<Box<dyn Stream<Item = Result<WorkspaceEvent>> + Send>>> {
-    let stream = client.call_stream("hyperforge.workspace.list", serde_json::Value::Null).await?;
+/// Bind a directory to an organization
+pub async fn bind(client: &PlexusClient, auto_create: Option<bool>, org_name: String, path: String) -> Result<Pin<Box<dyn Stream<Item = Result<WorkspaceEvent>> + Send>>> {
+    let stream = client.call_stream("hyperforge.workspace.bind", json!({ "auto_create": auto_create, "org_name": org_name, "path": path })).await?;
 
     // Filter and transform stream items to typed data
     let typed_stream = stream.filter_map(|item| async move {
@@ -326,9 +270,65 @@ pub async fn list(client: &PlexusClient) -> Result<Pin<Box<dyn Stream<Item = Res
     Ok(Box::pin(typed_stream))
 }
 
-/// Bind a directory to an organization
-pub async fn bind(client: &PlexusClient, auto_create: Option<bool>, org_name: String, path: String) -> Result<Pin<Box<dyn Stream<Item = Result<WorkspaceEvent>> + Send>>> {
-    let stream = client.call_stream("hyperforge.workspace.bind", json!({ "auto_create": auto_create, "org_name": org_name, "path": path })).await?;
+/// Show diff for all orgs bound to current workspace
+pub async fn diff(client: &PlexusClient, path: Option<String>) -> Result<Pin<Box<dyn Stream<Item = Result<WorkspaceEvent>> + Send>>> {
+    let stream = client.call_stream("hyperforge.workspace.diff", json!({ "path": path })).await?;
+
+    // Filter and transform stream items to typed data
+    let typed_stream = stream.filter_map(|item| async move {
+        match item {
+            Ok(PlexusStreamItem::Data { content, .. }) => {
+                match serde_json::from_value::<WorkspaceEvent>(content) {
+                    Ok(data) => Some(Ok(data)),
+                    Err(e) => Some(Err(e.into())),
+                }
+            }
+            Ok(PlexusStreamItem::Error { message, code, .. }) => {
+                Some(Err(anyhow!("Plexus error{}: {}",
+                    code.map(|c| format!(" [{}]", c)).unwrap_or_default(),
+                    message
+                )))
+            }
+            Ok(PlexusStreamItem::Progress { .. }) => None, // Skip progress
+            Ok(PlexusStreamItem::Done { .. }) => None, // Stream will end
+            Err(e) => Some(Err(e)),
+        }
+    });
+
+    Ok(Box::pin(typed_stream))
+}
+
+/// Clone all repos for all orgs bound to current workspace
+pub async fn clone_all(client: &PlexusClient) -> Result<Pin<Box<dyn Stream<Item = Result<WorkspaceEvent>> + Send>>> {
+    let stream = client.call_stream("hyperforge.workspace.clone_all", serde_json::Value::Null).await?;
+
+    // Filter and transform stream items to typed data
+    let typed_stream = stream.filter_map(|item| async move {
+        match item {
+            Ok(PlexusStreamItem::Data { content, .. }) => {
+                match serde_json::from_value::<WorkspaceEvent>(content) {
+                    Ok(data) => Some(Ok(data)),
+                    Err(e) => Some(Err(e.into())),
+                }
+            }
+            Ok(PlexusStreamItem::Error { message, code, .. }) => {
+                Some(Err(anyhow!("Plexus error{}: {}",
+                    code.map(|c| format!(" [{}]", c)).unwrap_or_default(),
+                    message
+                )))
+            }
+            Ok(PlexusStreamItem::Progress { .. }) => None, // Skip progress
+            Ok(PlexusStreamItem::Done { .. }) => None, // Stream will end
+            Err(e) => Some(Err(e)),
+        }
+    });
+
+    Ok(Box::pin(typed_stream))
+}
+
+/// List all workspace bindings
+pub async fn list(client: &PlexusClient) -> Result<Pin<Box<dyn Stream<Item = Result<WorkspaceEvent>> + Send>>> {
+    let stream = client.call_stream("hyperforge.workspace.list", serde_json::Value::Null).await?;
 
     // Filter and transform stream items to typed data
     let typed_stream = stream.filter_map(|item| async move {
@@ -359,9 +359,9 @@ pub async fn schema(client: &PlexusClient) -> Result<serde_json::Value> {
     client.call_single("hyperforge.workspace.schema", serde_json::Value::Null).await
 }
 
-/// Sync repos for all orgs bound to current workspace
-pub async fn sync(client: &PlexusClient, yes: Option<bool>) -> Result<Pin<Box<dyn Stream<Item = Result<WorkspaceEvent>> + Send>>> {
-    let stream = client.call_stream("hyperforge.workspace.sync", json!({ "yes": yes })).await?;
+/// Show current workspace resolution
+pub async fn show(client: &PlexusClient, path: Option<String>) -> Result<Pin<Box<dyn Stream<Item = Result<WorkspaceEvent>> + Send>>> {
+    let stream = client.call_stream("hyperforge.workspace.show", json!({ "path": path })).await?;
 
     // Filter and transform stream items to typed data
     let typed_stream = stream.filter_map(|item| async move {
