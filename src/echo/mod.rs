@@ -2,12 +2,9 @@
 //! Do not edit manually
 
 use crate::client::PlexusClient;
-use crate::types::*;
-use anyhow::{anyhow, Result};
-use futures::stream::{Stream, StreamExt};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::pin::Pin;
 
 // === Types ===
 

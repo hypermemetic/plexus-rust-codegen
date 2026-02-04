@@ -5,8 +5,6 @@ use crate::client::PlexusClient;
 use crate::types::*;
 use anyhow::{anyhow, Result};
 use futures::stream::{Stream, StreamExt};
-use serde::{Deserialize, Serialize};
-use serde_json::json;
 use std::pin::Pin;
 
 use crate::solar::SolarEvent;
