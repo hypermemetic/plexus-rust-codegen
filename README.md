@@ -72,10 +72,10 @@ while let Some(event) = stream.next().await {
 
 ## Generation
 
-This client is generated using the [hub-codegen](../hub-codegen) pipeline:
+This client is generated using the [plexus-codegen](../hub-codegen) pipeline:
 
 ```bash
-cd ../hub-codegen
+cd ../plexus-codegen
 
 # Auto-generate from running substrate
 ./scripts/update-rust-client.sh --generate ../substrate-rust-codegen
@@ -147,5 +147,5 @@ Same as Substrate project.
 ## Links
 
 - **Substrate**: [../substrate](../substrate)
-- **Hub Codegen**: [../hub-codegen](../hub-codegen)
+- **Plexus Codegen**: [../plexus-codegen](../plexus-codegen)
 - **Synapse CLI**: [../synapse](../synapse)

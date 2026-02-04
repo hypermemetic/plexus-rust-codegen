@@ -15,7 +15,7 @@ pub mod workspace;
 
 // === Types ===
 
-/// Root hub event type
+/// Root hyperforge event type
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum HyperforgeEvent {

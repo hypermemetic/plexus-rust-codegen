@@ -24,7 +24,7 @@ uptime_seconds: u64,
 
 // === Methods ===
 
-/// Check the health status of the hub and return uptime
+/// Check the health status of the Plexus RPC server and return uptime
 pub async fn check(client: &PlexusClient) -> Result<HealthEvent> {
     client.call_single("health.check", serde_json::Value::Null).await
 }
