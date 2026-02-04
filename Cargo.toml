@@ -1,8 +1,8 @@
 [package]
-name = "plexus-client"
+name = "plexus-codegen-rust"
 version = "0.1.20260125170504-32e46854"
 edition = "2021"
-description = "Auto-generated Plexus client (hash: 32e4685441699ea7)"
+description = "Rust client generator for Plexus RPC"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
