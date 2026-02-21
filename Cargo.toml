@@ -2,6 +2,7 @@
 name = "plexus-codegen-rust"
 version = "0.1.20260125170504-32e46854"
 edition = "2021"
+license = "AGPL-3.0-only"
 description = "Rust client generator for Plexus RPC"
 
 [dependencies]
